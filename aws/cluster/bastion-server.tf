@@ -71,7 +71,7 @@ resource "aws_eip" "bastion" {
 # Bastion DNS record
 
 resource "aws_route53_record" "bastion" {
-   zone_id = ${var.zone_id}
+   zone_id = "${var.route53_zone_id}"
    name = "bastion.${var.region}.${var.cluster_name}.${var.domain_name}"
    type = "A"
    ttl = "300"

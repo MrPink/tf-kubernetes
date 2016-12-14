@@ -27,7 +27,7 @@ module "aws-ssh" {
 
 # security group to allow all traffic in and out of the instances in the VPC
 module "sg-default" {
-  source = "../modules/sg-all-traffic"
+  source = "../modules/sg-traffic"
 
   vpc_id = "${module.vpc.vpc_id}"
 }

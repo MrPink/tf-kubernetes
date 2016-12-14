@@ -19,50 +19,55 @@ resource "template_file" "master_cloud_init" {
   }
 }
 
-resource "aws_instance" "master" {
+resource "aws_launch_configuration" "master-config" {
   instance_type     = "${var.master_instance_type}"
-  ami               = "${module.master_ami.ami_id}"
+  image_id          = "${module.master_ami.ami_id}"
   count             = "${var.masters}"
   key_name          = "${module.aws-ssh.keypair_name}"
   source_dest_check = false
   subnet_id         = "${element(split(",", module.vpc.private_subnets), count.index)}"
-  vpc_security_group_ids = ["${module.sg-default.security_group_id}"]
-  depends_on        = ["aws_instance.bastion"]
+  security_groups   = ["${module.sg-default.security_group_id}"]
   user_data         = "${template_file.master_cloud_init.rendered}"
-  tags = {
-    Name = "kube-master-${count.index}"
-    ansibleNodeType = "master"
-    ansibleFilter = "bouncer"
-  }
-  connection {
-    user                = "${var.default_instance_user}"
-    private_key         = "${file("${var.private_key_file}")}"
-    bastion_host        = "${aws_eip.bastion.public_ip}"
-    bastion_private_key = "${file("${var.private_key_file}")}"
-  }
+  associate_public_ip_address = false
+  iam_instance_profile = "${aws_iam_instance_profile.master-profile.id}"
 
-  # Do some early bootstrapping of the CoreOS machines. This will install
-  # python and pip so we can use as the ansible_python_interpreter in our playbooks
-  provisioner "file" {
-    source      = "../../scripts/coreos"
-    destination = "/tmp"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "sudo chmod -R +x /tmp/coreos",
-      "/tmp/coreos/bootstrap.sh",
-      "~/bin/python /tmp/coreos/get-pip.py",
-      "sudo mv /tmp/coreos/runner ~/bin/pip && sudo chmod 0755 ~/bin/pip",
-      "sudo rm -rf /tmp/coreos"
-    ]
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
-resource "aws_route53_record" "kube-masters-internal" {
-  zone_id = "${module.route53.zone_id}"
-  count = "${var.masters}"
-  name = "kube_master_${count.index}"
-  type = "A"
-  ttl = 5
-  records = ["${element(aws_instance.master.*.private_ip, count.index)}"]
+resource "aws_autoscaling_group" "master-group" {
+  launch_configuration = "${aws_launch_configuration.master-config.id}"
+  max_size = "${var.az_count}"
+  min_size = "${var.az_count}"
+  desired_capacity = "${var.az_count}"
+  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+  load_balancers = ["${aws_elb.internal-api.id}"]
+
+  tag {
+    key = "Name"
+    value = "kube-master"
+    propagate_at_launch = true
+  }
 }
+
+resource "aws_elb" "internal-api" {
+
+  name = "kubernetes-api-internal"
+  cross_zone_load_balancing = true
+  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+  internal = true
+  security_groups   = ["${module.sg-default.security_group_id}"]
+
+  tags {
+    Name = "api-internal"
+  }
+
+  "listener" {
+    instance_port = 6443
+    instance_protocol = "TCP"
+    lb_port = 443
+    lb_protocol = "TCP"
+  }
+}
+

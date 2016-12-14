@@ -14,3 +14,5 @@ variable "bastion_instance_type" { default = "t2.micro" }
 variable "docker_version" { default = "1.9.1-0~trusty" }
 variable "default_instance_user" { default = "core" }
 variable "environment" { default = "production" }
+variable "az_count" { default = "2" }
+variable "route53_zone_id" { default = "example" }

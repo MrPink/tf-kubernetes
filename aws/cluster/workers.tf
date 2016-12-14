@@ -19,51 +19,35 @@ resource "template_file" "worker_cloud_init" {
   }
 }
 
-/*
-  @todo This should be changed to be an autoscaling worker with launch config
- */
-resource "aws_instance" "worker" {
+resource "aws_launch_configuration" "worker-lc-config" {
   instance_type     = "${var.worker_instance_type}"
   ami               = "${module.worker_ami.ami_id}"
-  count             = "${var.workers}"
+  name_prefix       = "node-"
+  key_name          = "${aws_key_pair.kube-node-key.key_name}"
   key_name          = "${module.aws-ssh.keypair_name}"
   source_dest_check = false
-  # @todo - fix this as this only allows 3 workers maximum (due to splittingo on the count variable)
-  subnet_id         = "${element(split(",", module.vpc.private_subnets), count.index)}"
-  vpc_security_group_ids = ["${module.sg-default.security_group_id}"]
-  depends_on        = ["aws_instance.bastion", "aws_instance.master"]
-  user_data         = "${template_file.master_cloud_init.rendered}"
-  tags = {
-    Name = "kube-worker-${count.index}"
-    ansibleNodeType = "worker"
-    ansibleFilter = "${var.cluster_name}"
-  }
-  connection {
-    user                = "${var.default_instance_user}"
-    private_key         = "${file("${var.private_key_file}")}"
-    bastion_host        = "${aws_eip.bastion.public_ip}"
-    bastion_private_key = "${file("${var.private_key_file}")}"
-  }
+  security_groups   = ["${module.sg-default.security_group_id}"]
+  iam_instance_profile = "${}"
+  associate_public_ip_address = false
+  user_data         = "${template_file.worker_cloud_init.rendered}"
 
-  # Do some early bootstrapping of the CoreOS machines. This will install
-  # python and pip so we can use as the ansible_python_interpreter in our playbooks
-  provisioner "file" {
-    source      = "../../scripts/coreos"
-    destination = "/tmp"
-  }
-  provisioner "remote-exec" {
-    inline = [
-      "sudo chmod -R +x /tmp/coreos",
-      "/tmp/coreos/bootstrap.sh",
-      "~/bin/python /tmp/coreos/get-pip.py",
-      "sudo mv /tmp/coreos/runner ~/bin/pip && sudo chmod 0755 ~/bin/pip",
-      "sudo rm -rf /tmp/coreos"
-    ]
-  }
-
-  ebs_block_device {
-    device_name           = "/dev/xvdb"
-    volume_size           = "${var.worker_ebs_volume_size}"
-    delete_on_termination = true
+  lifecycle {
+    create_before_destroy = true
   }
 }
+
+resource "aws_autoscaling_group" "node-group" {
+
+  launch_configuration = "${aws_launch_configuration.worker-lc-config.id}"
+  max_size = "${var.az_count * 10}"
+  min_size = "${var.az_count}"
+  desired_capacity = "${var.az_count}"
+  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+
+  tag {
+    key = "Name"
+    value = "kube-worker"
+    propagate_at_launch = true
+  }
+}
+
