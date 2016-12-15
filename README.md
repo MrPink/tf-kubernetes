@@ -6,3 +6,5 @@
 * cloud-config templates
 * documentation
 * testing
+* autoscaler in kube-system
+* OpenVPN container on the Bastion
