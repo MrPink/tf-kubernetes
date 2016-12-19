@@ -10,9 +10,9 @@ module "worker_ami" {
   virttype = "${module.worker_amitype.prefer_hvm}"
 }
 
-resource "template_file" "worker_cloud_init" {
-  template   = "worker-cloud-config.yml.tpl"
-  depends_on = ["template_file.etcd_discovery_url"]
+data "template_file" "worker_cloud_init" {
+  template   = "${file("worker-cloud-config.yml.tpl")}"
+  depends_on = ["null_resource.etcd_discovery_url"]
   vars {
     cluster_name = "${var.cluster_name}"
     region       = "${var.region}"
@@ -21,14 +21,14 @@ resource "template_file" "worker_cloud_init" {
 
 resource "aws_launch_configuration" "worker-lc-config" {
   instance_type     = "${var.worker_instance_type}"
-  ami               = "${module.worker_ami.ami_id}"
+  image_id          = "${module.worker_ami.ami_id}"
+  user_data         = "${data.template_file.worker_cloud_init.rendered}"
   name_prefix       = "node-"
   key_name          = "${aws_key_pair.kube-node-key.key_name}"
   key_name          = "${module.aws-ssh.keypair_name}"
   security_groups   = ["${module.sg-default.security_group_id}"]
   #iam_instance_profile = "${}"
   associate_public_ip_address = false
-  user_data         = "${template_file.worker_cloud_init.rendered}"
 
   lifecycle {
     create_before_destroy = true
@@ -54,7 +54,7 @@ resource "aws_elb" "ingress" {
 
   name = "kubernetes-ingress"
   cross_zone_load_balancing = true
-  vpc_zone_identifier = ["${module.vpc.public_subnets}"]
+  availability_zones = ["${var.availability_zones}"]
   security_groups   = ["${module.sg-default.security_group_id}"]
 
   tags {

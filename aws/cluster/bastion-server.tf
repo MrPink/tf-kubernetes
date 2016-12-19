@@ -11,9 +11,9 @@ module "bastion_ami" {
   virttype = "${module.bastion_amitype.prefer_hvm}"
 }
 
-resource "template_file" "bastion_cloud_init" {
-   template   = "bastion-cloud-config.yml.tpl"
-   depends_on = ["template_file.etcd_discovery_url"]
+data "template_file" "bastion_cloud_init" {
+   template   = "${file("bastion-cloud-config.yml.tpl")}"
+   depends_on = ["null_resource.etcd_discovery_url"]
    vars {
      etcd_discovery_url = "${file(var.etcd_discovery_url_file)}"
      size               = "${var.masters}"
@@ -30,7 +30,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids = ["${module.sg-default.security_group_id}", "${aws_security_group.bastion.id}"]
   key_name          = "${module.aws-ssh.keypair_name}"
   source_dest_check = false
-  user_data         = "${template_file.bastion_cloud_init.rendered}"
+  user_data         = "${data.template_file.bastion_cloud_init.rendered}"
   tags = {
     Name = "kube-bastion"
     ansibleFilter = "bouncer"

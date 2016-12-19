@@ -10,9 +10,9 @@ module "master_ami" {
   virttype = "${module.master_amitype.prefer_hvm}"
 }
 
-resource "template_file" "master_cloud_init" {
-  template   = "master-cloud-config.yml.tpl"
-  #depends_on = ["template_file.etcd_discovery_url"]
+data "template_file" "master_cloud_init" {
+  template   = "${file("master-cloud-config.yml.tpl")}"
+  depends_on = ["null_resource.etcd_discovery_url"]
   vars {
     cluster_name = "${var.cluster_name}"
     region       = "${var.region}"
@@ -21,12 +21,12 @@ resource "template_file" "master_cloud_init" {
 
 resource "aws_launch_configuration" "master-config" {
   instance_type     = "${var.master_instance_type}"
+  name              = "master-config"
   image_id          = "${module.master_ami.ami_id}"
   count             = "${var.masters}"
   key_name          = "${module.aws-ssh.keypair_name}"
-  source_dest_check = false
   security_groups   = ["${module.sg-default.security_group_id}"]
-  user_data         = "${template_file.master_cloud_init.rendered}"
+  user_data         = "${data.template_file.master_cloud_init.rendered}"
   associate_public_ip_address = false
   iam_instance_profile = "${module.iam.master_profile_name}"
 
@@ -36,7 +36,7 @@ resource "aws_launch_configuration" "master-config" {
 }
 
 resource "aws_autoscaling_group" "master-group" {
-  launch_configuration = "${aws_launch_configuration.master-config.id}"
+  launch_configuration = "master-config"
   max_size = "${var.az_count}"
   min_size = "${var.az_count}"
   desired_capacity = "${var.az_count}"
@@ -54,9 +54,17 @@ resource "aws_elb" "internal-api" {
 
   name = "kubernetes-api-internal"
   cross_zone_load_balancing = true
-  vpc_zone_identifier = ["${module.vpc.private_subnets}"]
+  availability_zones = ["${var.availability_zones}"]
   internal = true
   security_groups   = ["${module.sg-default.security_group_id}"]
+
+  health_check {
+    healthy_threshold = 2
+    unhealthy_threshold = 2
+    timeout = 3
+    target = "TCP:6443"
+    interval = 30
+  }
 
   tags {
     Name = "api-internal"
