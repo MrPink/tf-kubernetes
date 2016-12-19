@@ -3,7 +3,7 @@ variable "cidr" { }
 variable "public_subnets" { default = "" }
 variable "private_subnets" { default = "" }
 variable "bastion_instance_id" { }
-variable "azs" { }
+variable "availability_zones" {}
 variable "enable_dns_hostnames" {
   description = "should be true if you want to use private DNS within the VPC"
   default = true
@@ -52,7 +52,7 @@ resource "aws_route_table" "private" {
 resource "aws_subnet" "private" {
   vpc_id            = "${aws_vpc.mod.id}"
   cidr_block        = "${element(split(",", var.private_subnets), count.index)}"
-  availability_zone = "${element(split(",", var.azs), count.index)}"
+  availability_zone = "${element(split(",", var.availability_zones), count.index)}"
   count             = "${length(compact(split(",", var.private_subnets)))}"
   tags {
     Name = "${var.name}-private"
@@ -62,7 +62,7 @@ resource "aws_subnet" "private" {
 resource "aws_subnet" "public" {
   vpc_id            = "${aws_vpc.mod.id}"
   cidr_block        = "${element(split(",", var.public_subnets), count.index)}"
-  availability_zone = "${element(split(",", var.azs), count.index)}"
+  availability_zone = "${element(split(",", var.availability_zones), count.index)}"
   count             = "${length(compact(split(",", var.public_subnets)))}"
   tags {
     Name = "${var.name}-public"
@@ -85,10 +85,11 @@ resource "aws_route_table_association" "public" {
 
 # outputs
 output "private_subnets" {
-  value = "${join(",", aws_subnet.private.*.id)}"
+  value = "${aws_subnet.private.*}"
 }
+
 output "public_subnets" {
-  value = "${join(",", aws_subnet.public.*.id)}"
+  value = "${aws_subnet.public.*}"
 }
 output "vpc_id" {
   value = "${aws_vpc.mod.id}"

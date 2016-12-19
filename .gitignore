@@ -1,1 +1,3 @@
 .terraform
+ssh/
+aws/cluster/etcd_discovery_url_file

@@ -25,9 +25,8 @@ resource "aws_launch_configuration" "worker-lc-config" {
   name_prefix       = "node-"
   key_name          = "${aws_key_pair.kube-node-key.key_name}"
   key_name          = "${module.aws-ssh.keypair_name}"
-  source_dest_check = false
   security_groups   = ["${module.sg-default.security_group_id}"]
-  iam_instance_profile = "${}"
+  #iam_instance_profile = "${}"
   associate_public_ip_address = false
   user_data         = "${template_file.worker_cloud_init.rendered}"
 
@@ -36,18 +35,37 @@ resource "aws_launch_configuration" "worker-lc-config" {
   }
 }
 
-resource "aws_autoscaling_group" "node-group" {
+resource "aws_autoscaling_group" "worker-as-group" {
 
   launch_configuration = "${aws_launch_configuration.worker-lc-config.id}"
   max_size = "${var.az_count * 10}"
   min_size = "${var.az_count}"
   desired_capacity = "${var.az_count}"
-  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+  vpc_zone_identifier = ["${module.vpc.private_subnets}"]
 
   tag {
     key = "Name"
     value = "kube-worker"
     propagate_at_launch = true
+  }
+}
+
+resource "aws_elb" "ingress" {
+
+  name = "kubernetes-ingress"
+  cross_zone_load_balancing = true
+  vpc_zone_identifier = ["${module.vpc.public_subnets}"]
+  security_groups   = ["${module.sg-default.security_group_id}"]
+
+  tags {
+    Name = "ingress"
+  }
+
+  "listener" {
+    instance_port = 80
+    instance_protocol = "HTTP"
+    lb_port = 80
+    lb_protocol = "HTTP"
   }
 }
 

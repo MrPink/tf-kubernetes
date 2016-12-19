@@ -25,11 +25,10 @@ resource "aws_launch_configuration" "master-config" {
   count             = "${var.masters}"
   key_name          = "${module.aws-ssh.keypair_name}"
   source_dest_check = false
-  subnet_id         = "${element(split(",", module.vpc.private_subnets), count.index)}"
   security_groups   = ["${module.sg-default.security_group_id}"]
   user_data         = "${template_file.master_cloud_init.rendered}"
   associate_public_ip_address = false
-  iam_instance_profile = "${aws_iam_instance_profile.master-profile.id}"
+  iam_instance_profile = "${module.iam.master_profile_name}"
 
   lifecycle {
     create_before_destroy = true
@@ -41,7 +40,7 @@ resource "aws_autoscaling_group" "master-group" {
   max_size = "${var.az_count}"
   min_size = "${var.az_count}"
   desired_capacity = "${var.az_count}"
-  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+  vpc_zone_identifier = ["${module.vpc.private_subnets}"]
   load_balancers = ["${aws_elb.internal-api.id}"]
 
   tag {
@@ -55,7 +54,7 @@ resource "aws_elb" "internal-api" {
 
   name = "kubernetes-api-internal"
   cross_zone_load_balancing = true
-  vpc_zone_identifier = ["${module.vpc.private_subnets.*.id}"]
+  vpc_zone_identifier = ["${module.vpc.private_subnets}"]
   internal = true
   security_groups   = ["${module.sg-default.security_group_id}"]
 
